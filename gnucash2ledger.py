@@ -98,6 +98,30 @@ class Commodity:
         )
 
 
+class Price:
+    def __init__(self, entry):
+        """Generates representation of commodity price from XML."""
+
+        self.commoditySpace = orElse(
+            entry.find("price:commodity/cmdty:space", nss)
+        ).text
+        self.commodityId = orElse(entry.find("price:commodity/cmdty:id", nss)).text
+        self.currencyId = orElse(entry.find("price:currency/cmdty:id", nss)).text
+        self.date = dateutil.parser.parse(entry.find("price:time/ts:date", nss).text)
+        self.value = orElse(entry.find("price:value", nss)).text
+        self.source = orElse(entry.find("price:source", nss)).text
+
+    def toLedgerFormat(self, indent=0):
+        """Format commodity price to ledger entry."""
+
+        date = self.date.strftime("%Y/%m/%d")
+        value = round(int(self.value.split("/")[0]) / int(self.value.split("/")[1]), 2)
+        valueStr = (
+            f"${value}" if self.currencyId == "USD" else f"{value} {self.currencyId}"
+        )
+        return f'P {date} "{self.commodityId}"    {valueStr} ; ({self.commoditySpace}:{self.commodityId}) source: {self.source}'
+
+
 class Account:
     def __init__(self, accountDb, e):
         self.accountDb = accountDb
@@ -241,6 +265,11 @@ def convert2Ledger(inputFile):
     for cmdty in b.findall("gnc:commodity", nss):
         commodities.append(Commodity(cmdty))
 
+    # Find all commodity prices
+    prices = []
+    for price in b.findall("gnc:pricedb/price", nss):
+        prices.append(Price(price))
+
     # Find all accounts
     accountDb = {}
     for acc in b.findall("gnc:account", nss):
@@ -254,15 +283,19 @@ def convert2Ledger(inputFile):
     # Generate output
     output = ""
 
-    # First, add the commodities definition
+    # First, add commodity definitions
     output = "\n".join(c.toLedgerFormat() for c in commodities)
     output += "\n\n"
 
-    # Then, output all accounts
+    # Then, add commodity prices
+    output += "\n".join(p.toLedgerFormat() for p in prices)
+    output += "\n\n"
+
+    # Then, add accounts
     output += "\n".join(a.toLedgerFormat() for a in accountDb.values() if a.used)
     output += "\n\n"
 
-    # And finally, output all transactions
+    # And finally, add transactions
     output += "\n".join(
         t.toLedgerFormat() for t in sorted(transactions, key=lambda x: x.date)
     )
