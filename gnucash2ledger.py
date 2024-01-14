@@ -83,23 +83,19 @@ def orElse(var, default=""):
 
 
 class Commodity:
-    def __init__(self, e):
-        """From a XML e representing a commodity, generates a representation of
-        the commodity
-        """
+    def __init__(self, entry):
+        """Generates representation of commodity from XML."""
 
-        self.space = orElse(e.find("cmdty:space", nss)).text
-        self.id = orElse(e.find("cmdty:id", nss)).text
-        self.name = orElse(e.find("cmdty:name", nss)).text
+        self.space = orElse(entry.find("cmdty:space", nss)).text
+        self.id = orElse(entry.find("cmdty:id", nss)).text
+        self.name = orElse(entry.find("cmdty:name", nss)).text
 
-    def toLedgerFormat(self, indent=0):
-        """Format the commodity in a way good to be interpreted by ledger.
+    def toLedgerFormat(self):
+        """Format commodity to ledger entry."""
 
-        If provided, `indent` will be the indentation (in spaces) of the entry.
-        """
-        outPattern = ("{spaces}commodity \"{id}\"\n"
-                      "{spaces}  note {name} ({space}:{id})\n")
-        return outPattern.format(spaces=" " * indent, **self.__dict__)
+        return (
+            f'commodity "{self.id}"\n' f"  note {self.name} ({self.space}:{self.id})\n"
+        )
 
 
 class Account:
@@ -154,15 +150,23 @@ class Split:
     def getAccount(self):
         return self.accountDb[self.accountId]
 
-    def toLedgerFormat(self, commodity="$", indent=0):
+    def toLedgerFormat(self, commodity="USD", indent=0):
         outPattern = "{spaces}  {flag}{accountName}    {value}"
 
         # Check if commodity conversion will be needed
         conversion = ""
         if commodity == self.getAccount().commodity:
-            value = "{value} {commodity}".format(commodity=commodity, value=self.value)
+            value = (
+                f"{self.value} {commodity}" if commodity != "USD" else f"${self.value}"
+            )
+
         else:
-            conversion = ' {destValue} "{destCmdty}" @@ {value} {commodity}'
+            conversion = (
+                ' {destValue} "{destCmdty}" @@ {value} {commodity}'
+                if commodity != "USD"
+                else ' {destValue} "{destCmdty}" @@ ${value}'
+            )
+
             realValue = self.value[1:] if self.value.startswith("-") else self.value
             value = conversion.format(
                 destValue=self.quantity,
